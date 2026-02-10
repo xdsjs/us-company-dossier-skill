@@ -1,5 +1,7 @@
 # US Company Dossier Skill
 
+**English** | [中文](SKILL.zh-CN.md)
+
 This skill transforms OpenClaw into a "US Company Research Assistant" that automatically builds comprehensive company dossiers for US publicly traded companies.
 
 ## Overview
@@ -74,7 +76,7 @@ Install as a system command for easy access from anywhere:
 
 ```bash
 # Navigate to the skill directory
-cd /Users/jss/clawd/skills/us_company_dossier
+cd /path/to/us-company-dossier-skill
 
 # Install in development mode (editable)
 pip install -e .
@@ -94,7 +96,7 @@ pip uninstall us-company-dossier
 If you prefer not to install, you can still use the CLI directly:
 
 ```bash
-python /Users/jss/clawd/skills/us_company_dossier/cli.py build --ticker AAPL
+python /path/to/us-company-dossier-skill/cli.py build --ticker AAPL
 ```
 
 ## Usage
@@ -198,4 +200,4 @@ playwright install chromium
 
 ## Examples
 
-See `demo.py` for complete usage examples and `run_tsla_dossier.py` in your workspace for a ready-to-run example.
+See `demo.py` for complete usage examples.

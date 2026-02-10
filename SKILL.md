@@ -1,3 +1,8 @@
+---
+name: us-company-dossier
+description: Build comprehensive dossiers for US public companies with SEC filings, IR materials, and structured data. Supports fast links-only mode and full download mode.
+---
+
 # US Company Dossier Skill
 
 **English** | [中文](SKILL.zh-CN.md)

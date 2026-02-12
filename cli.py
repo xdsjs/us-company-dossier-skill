@@ -6,6 +6,7 @@ CLI wrapper for us_company_dossier skill
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -13,14 +14,31 @@ from pathlib import Path
 skill_dir = Path(__file__).parent
 sys.path.insert(0, str(skill_dir))
 
+# Load .env from workspace (project root = clawd, or cwd)
+def _load_dotenv():
+    for base in [skill_dir.parent.parent, Path(os.getcwd())]:
+        env_path = base / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                m = re.match(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$', line)
+                if m and not line.strip().startswith("#"):
+                    key, val = m.group(1), m.group(2).strip().strip('"').strip("'")
+                    if key not in os.environ:
+                        os.environ[key] = val
+            break
+
+_load_dotenv()
+
 # Import the optimized version
 from us_company_dossier import build_dossier, update_dossier, status, list_artifacts
 
 
 def main():
     parser = argparse.ArgumentParser(description="US Company Dossier Builder")
-    parser.add_argument("--workspace", default=os.getenv("WORKSPACE_ROOT", os.getcwd()), 
+    parser.add_argument("--workspace", default=os.getenv("WORKSPACE_ROOT", os.getcwd()),
                        help="Workspace root directory")
+    parser.add_argument("--dossier-root", default=os.getenv("DOSSIER_ROOT"),
+                       help="Dossier output directory (overrides DOSSIER_ROOT env)")
     
     subparsers = parser.add_subparsers(dest="command", required=True)
     
@@ -75,7 +93,9 @@ def main():
     
     # Set workspace root
     os.environ["WORKSPACE_ROOT"] = args.workspace
-    
+    if args.dossier_root:
+        os.environ["DOSSIER_ROOT"] = args.dossier_root
+
     try:
         if args.command == "build":
             result = build_dossier(
@@ -87,7 +107,8 @@ def main():
                 force_rebuild=args.force_rebuild,
                 normalize_level=args.normalize_level,
                 fetch_mode=args.fetch_mode,
-                download_mode=args.download_mode
+                download_mode=args.download_mode,
+                dossier_root=args.dossier_root
             )
             print(json.dumps(result, indent=2))
             
@@ -100,12 +121,13 @@ def main():
                 max_filings_per_form=args.max_filings_per_form,
                 normalize_level=args.normalize_level,
                 fetch_mode=args.fetch_mode,
-                download_mode=args.download_mode
+                download_mode=args.download_mode,
+                dossier_root=args.dossier_root
             )
             print(json.dumps(result, indent=2))
             
         elif args.command == "status":
-            result = status(args.ticker)
+            result = status(args.ticker, dossier_root=args.dossier_root)
             print(json.dumps(result, indent=2))
             
         elif args.command == "list":
@@ -117,7 +139,7 @@ def main():
             if args.since:
                 filters["since"] = args.since
                 
-            result = list_artifacts(args.ticker, filters)
+            result = list_artifacts(args.ticker, filters, dossier_root=args.dossier_root)
             print(json.dumps(result, indent=2))
             
     except Exception as e:

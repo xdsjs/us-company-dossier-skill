@@ -8,8 +8,8 @@ This optimized version organizes files by form type for easier navigation.
 import os
 import json
 import hashlib
-import time
 import re
+import time
 import requests
 import logging
 from datetime import datetime, timedelta
@@ -20,6 +20,22 @@ from urllib.parse import urljoin, urlparse
 import html2text
 from dataclasses import dataclass, asdict
 from enum import Enum
+
+# Load .env from project root when module is imported
+def _load_dotenv():
+    _skill_dir = Path(__file__).parent
+    for base in [_skill_dir.parent.parent, Path(os.getcwd())]:
+        env_path = base / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                m = re.match(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$', line)
+                if m and not line.strip().startswith("#"):
+                    key, val = m.group(1), m.group(2).strip().strip('"').strip("'")
+                    if key not in os.environ:
+                        os.environ[key] = val
+            break
+
+_load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -80,14 +96,24 @@ class ConfigSnapshot:
     ir_base_url_map: Dict[str, str]
 
 class USCCompanyDossier:
-    def __init__(self, workspace_root: str = None):
-        # Default to the OpenClaw workspace root if not specified
-        if workspace_root is None:
-            workspace_root = os.getenv("OPENCLAW_WORKSPACE", "/Users/jss/clawd")
-            if not os.path.exists(workspace_root):
-                workspace_root = os.getcwd()
-        self.workspace_root = workspace_root
-        self.dossier_root = os.path.join(self.workspace_root, "dossiers")
+    def __init__(self, workspace_root: str = None, dossier_root: str = None):
+        # Dossier output: explicit param > DOSSIER_ROOT env > workspace/dossiers
+        if dossier_root:
+            self.dossier_root = dossier_root
+        elif os.getenv("DOSSIER_ROOT"):
+            self.dossier_root = os.getenv("DOSSIER_ROOT")
+        else:
+            # Default to the OpenClaw workspace root if not specified
+            if workspace_root is None:
+                workspace_root = (
+                    os.getenv("WORKSPACE_ROOT") or
+                    os.getenv("OPENCLAW_WORKSPACE") or
+                    "/Users/jss/clawd"
+                )
+                if not os.path.exists(workspace_root):
+                    workspace_root = os.getcwd()
+            self.dossier_root = os.path.join(workspace_root, "dossiers")
+        self.workspace_root = os.path.dirname(self.dossier_root)
         self.sec_user_agent = os.getenv("SEC_USER_AGENT", "OpenClawResearchBot/1.0 (research@openclaw.ai)")
         self.sec_rps_limit = int(os.getenv("SEC_RPS_LIMIT", "3"))
         self.domain_allowlist = os.getenv("DOMAIN_ALLOWLIST", "").split(",") if os.getenv("DOMAIN_ALLOWLIST") else []
@@ -899,16 +925,16 @@ class USCCompanyDossier:
         
         return filtered_artifacts
 
-def build_dossier(ticker: str, years: int = 3, forms: List[str] = None, 
+def build_dossier(ticker: str, years: int = 3, forms: List[str] = None,
                   include_ir: bool = True, max_filings_per_form: int = 50,
                   force_rebuild: bool = False, normalize_level: str = "light",
-                  fetch_mode: str = "http", download_mode: str = "links_only", 
-                  workspace: str = None) -> Dict:
+                  fetch_mode: str = "http", download_mode: str = "links_only",
+                  workspace: str = None, dossier_root: str = None) -> Dict:
     """Build a company dossier with the specified parameters."""
     if forms is None:
         forms = ["10-K", "10-Q", "8-K", "DEF 14A", "4"]
-    
-    dossier_builder = USCCompanyDossier(workspace)
+
+    dossier_builder = USCCompanyDossier(workspace_root=workspace, dossier_root=dossier_root)
     return dossier_builder.build_dossier(
         ticker=ticker,
         years=years,
@@ -924,12 +950,13 @@ def build_dossier(ticker: str, years: int = 3, forms: List[str] = None,
 def update_dossier(ticker: str, years: int = 3, forms: List[str] = None,
                    include_ir: bool = True, max_filings_per_form: int = 50,
                    normalize_level: str = "light", fetch_mode: str = "http",
-                   download_mode: str = "links_only", workspace: str = None) -> Dict:
+                   download_mode: str = "links_only", workspace: str = None,
+                   dossier_root: str = None) -> Dict:
     """Update an existing company dossier."""
     if forms is None:
         forms = ["10-K", "10-Q", "8-K", "DEF 14A", "4"]
-    
-    dossier_builder = USCCompanyDossier(workspace)
+
+    dossier_builder = USCCompanyDossier(workspace_root=workspace, dossier_root=dossier_root)
     return dossier_builder.update_dossier(
         ticker=ticker,
         years=years,
@@ -941,16 +968,17 @@ def update_dossier(ticker: str, years: int = 3, forms: List[str] = None,
         download_mode=download_mode
     )
 
-def status(ticker: str, workspace: str = None) -> Dict:
+def status(ticker: str, workspace: str = None, dossier_root: str = None) -> Dict:
     """Get the status of a company dossier."""
-    dossier_builder = USCCompanyDossier(workspace)
+    dossier_builder = USCCompanyDossier(workspace_root=workspace, dossier_root=dossier_root)
     return dossier_builder.status(ticker)
 
-def list_artifacts(ticker: str, filters: Dict = None, workspace: str = None) -> List[Dict]:
+def list_artifacts(ticker: str, filters: Dict = None, workspace: str = None,
+                  dossier_root: str = None) -> List[Dict]:
     """List artifacts in a company dossier."""
     if filters is None:
         filters = {}
-    dossier_builder = USCCompanyDossier(workspace)
+    dossier_builder = USCCompanyDossier(workspace_root=workspace, dossier_root=dossier_root)
     return dossier_builder.list_artifacts(ticker, filters)
 
 def main():
@@ -970,10 +998,12 @@ def main():
     parser.add_argument("--fetch-mode", choices=["http", "browser_fallback"], default="http",
                         help="Fetch mode for IR materials")
     parser.add_argument("--workspace", help="Workspace root directory")
+    parser.add_argument("--dossier-root", default=os.getenv("DOSSIER_ROOT"),
+                       help="Dossier output directory")
     
     args = parser.parse_args()
     
-    dossier_builder = USCCompanyDossier(args.workspace)
+    dossier_builder = USCCompanyDossier(workspace_root=args.workspace, dossier_root=args.dossier_root)
     result = dossier_builder.build_dossier(
         ticker=args.ticker,
         years=args.years,
